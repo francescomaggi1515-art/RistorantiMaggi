@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B4FD6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ristoranti">
+<title>Diario dei ristoranti</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: barra di controllo in alto, poi griglia di schede (Lista) oppure mappa con elenco laterale (Mappa); dettaglio e modulo si aprono come foglio sopra la pagina. */
+:root {
+  --bg: #EEF1F4; --surface: #FFFFFF; --surface-2: #F5F7F9; --ink: #101B26; --muted: #566574; --line: #D5DCE3;
+  --accent: #1B4FD6; --on-accent: #FFFFFF; --accent-soft: #E1EAFD; --danger: #B3261E;
+  --shadow: 0 1px 2px rgba(16, 27, 38, 0.08), 0 10px 28px rgba(16, 27, 38, 0.10); --scrim: rgba(16, 27, 38, 0.52);
+  --tilefilter: none;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0C1218; --surface: #141D26; --surface-2: #1A2530; --ink: #E7EDF3; --muted: #9AA9B7; --line: #273441;
+    --accent: #86A8FF; --on-accent: #0A1424; --accent-soft: #1B2A4A; --danger: #FF8A80;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.45); --scrim: rgba(0, 0, 0, 0.66);
+    --tilefilter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.8);
+    color-scheme: dark;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+html, body { min-height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-top: calc(20px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-text-size-adjust: 100%;
+}
+.app { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+button { font: inherit; color: inherit; }
+
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
+.brand { min-width: 0; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4.6vw, 38px); letter-spacing: -0.02em; line-height: 1.05; margin: 0; text-wrap: balance; }
+.stats { margin: 6px 0 0; font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.02em; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.field-in { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; min-width: 0; }
+.field-in::placeholder { color: var(--muted); opacity: 0.8; }
+.search { flex: 1 1 200px; min-width: 0; }
+.search .field-in { width: 100%; }
+.btn { font: inherit; font-weight: 600; font-size: 14px; border-radius: 8px; padding: 9px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.danger { color: var(--danger); }
+.btn[disabled] { opacity: 0.55; cursor: default; }
+.btn.small { padding: 6px 11px; font-size: 13px; }
+
+.notice { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 14px; font-size: 13.5px; color: var(--muted); }
+.vote { display: inline-grid; place-items: center; min-width: 38px; height: 38px; padding: 0 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-family: var(--f-display); font-weight: 700; font-size: 16px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.vote.sm { min-width: 30px; height: 30px; font-size: 13.5px; padding: 0 6px; }
+.vote.lg { min-width: 54px; height: 54px; font-size: 24px; padding: 0 12px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; min-width: 0; }
+.card:hover { box-shadow: var(--shadow); border-color: var(--muted); }
+.card .media { position: relative; aspect-ratio: 4 / 3; background: var(--accent-soft); overflow: hidden; }
+.card .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card .media .vote { position: absolute; left: 10px; top: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28); }
+.card .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card h3 { font-family: var(--f-display); font-weight: 650; font-size: 19px; letter-spacing: -0.01em; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+.meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.card p { margin: 0; opacity: 0.86; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; overflow-wrap: anywhere; font-size: 14px; }
+.ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--accent); background:
+  repeating-linear-gradient(135deg, transparent 0 14px, color-mix(in srgb, var(--accent) 9%, transparent) 14px 15px), var(--accent-soft); }
+.ph span { font-family: var(--f-display); font-weight: 700; font-size: 64px; letter-spacing: -0.03em; opacity: 0.9; }
+.ph.mini span { font-size: 20px; }
+.nores { grid-column: 1 / -1; padding: 40px 0; color: var(--muted); margin: 0; }
+
+.empty { border: 1px dashed var(--muted); border-radius: 12px; padding: clamp(28px, 6vw, 64px); background: var(--surface); display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.empty h2 { font-family: var(--f-display); font-weight: 700; font-size: clamp(24px, 4vw, 34px); margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+.empty p { margin: 0; max-width: 52ch; color: var(--muted); }
+
+.mapview { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.mapbox { position: relative; height: clamp(440px, 72vh, 780px); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; isolation: isolate; }
+#map, .pickmap { position: absolute; inset: 0; background: var(--surface-2); }
+.leaflet-container { font-family: var(--f-body); }
+.leaflet-tile-pane { filter: var(--tilefilter); }
+.mapctl { position: absolute; right: 10px; bottom: 28px; z-index: 1000; }
+.selcard { position: absolute; left: 10px; bottom: 28px; z-index: 1000; width: min(400px, calc(100% - 70px)); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 10px; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.selcard .thumb { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; background: var(--accent-soft); }
+.selcard .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.selcard h3 { margin: 0; font-family: var(--f-display); font-size: 17px; font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }
+.selcard .acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.selcard .x { position: absolute; right: 4px; top: -34px; width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; }
+.pin { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-family: var(--f-display); font-weight: 700; font-size: 13px; display: grid; place-items: center; border: 2.5px solid var(--surface); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+.pin.sel { transform: scale(1.25); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4); }
+.pin.here { background: var(--ink); color: var(--bg); width: 30px; height: 30px; font-size: 16px; }
+.side { max-height: clamp(440px, 72vh, 780px); overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; }
+.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; text-align: left; width: 100%; }
+.row[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.row .thumb { position: relative; width: 44px; height: 44px; border-radius: 8px; overflow: hidden; background: var(--accent-soft); }
+.row .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.row .nm { font-weight: 600; overflow-wrap: anywhere; line-height: 1.25; }
+.tag { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--muted); }
+
+.overlay { position: fixed; inset: 0; z-index: 2000; background: var(--scrim); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet { position: relative; width: min(720px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); margin: auto 0; display: flex; flex-direction: column; min-width: 0; }
+.sheet .xbtn { position: absolute; right: 10px; top: 10px; z-index: 5; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.gal { background: var(--surface-2); border-radius: 12px 12px 0 0; overflow: hidden; }
+.gal .main { position: relative; aspect-ratio: 16 / 10; background: var(--accent-soft); }
+.gal .main img { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+.gal .thumbs { display: flex; gap: 6px; padding: 8px; overflow-x: auto; }
+.gal .thumbs button { flex: 0 0 auto; width: 64px; height: 48px; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; cursor: pointer; background: var(--accent-soft); }
+.gal .thumbs button[aria-current="true"] { border-color: var(--accent); }
+.gal .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sheet .inner { padding: 20px clamp(16px, 4vw, 28px) 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.sheet h2 { font-family: var(--f-display); font-weight: 700; font-size: clamp(24px, 4vw, 32px); letter-spacing: -0.02em; line-height: 1.1; margin: 0; overflow-wrap: anywhere; text-wrap: balance; padding-right: 44px; }
+.headrow { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; padding-right: 44px; }
+.headrow h2 { padding-right: 0; }
+.desc { white-space: pre-line; overflow-wrap: anywhere; margin: 0; }
+.addr { font-size: 14px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.addr a { color: var(--accent); font-weight: 600; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+form.edit { display: flex; flex-direction: column; gap: 16px; }
+.fg { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fg > label, .fg > .lbl { font-size: 13px; font-weight: 600; }
+.hint { font-size: 12.5px; color: var(--muted); }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.edit .field-in { width: 100%; }
+.edit textarea.field-in { min-height: 110px; resize: vertical; line-height: 1.45; }
+.edit input[type="range"] { width: 100%; accent-color: var(--accent); }
+.voterow { display: flex; align-items: center; gap: 14px; }
+.voterow input { flex: 1; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.pickwrap { position: relative; height: 260px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; isolation: isolate; }
+.results { display: flex; flex-direction: column; gap: 4px; }
+.results button { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; cursor: pointer; font-size: 13px; line-height: 1.3; }
+.results button[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.status { font-size: 12.5px; color: var(--muted); min-height: 1.3em; }
+.status a { color: var(--accent); font-weight: 600; }
+.status.err { color: var(--danger); }
+.mono { font-family: var(--f-mono); }
+.coord { font-family: var(--f-mono); font-size: 13px; }
+.photos { display: flex; flex-wrap: wrap; gap: 10px; }
+.photo { position: relative; width: 96px; height: 72px; border-radius: 8px; overflow: hidden; background: var(--accent-soft); border: 1px solid var(--line); }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo .rm { position: absolute; right: 3px; top: 3px; width: 26px; height: 26px; border-radius: 999px; border: 0; background: rgba(0, 0, 0, 0.66); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
+.photo .cov { position: absolute; left: 3px; bottom: 3px; font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; background: rgba(0, 0, 0, 0.66); color: #fff; border: 0; border-radius: 4px; padding: 1px 5px; }
+button.cov { cursor: pointer; }
+.photo.busy { display: grid; place-items: center; font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.addphoto { width: 96px; height: 72px; border: 1px dashed var(--muted); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; display: grid; place-items: center; text-align: center; line-height: 1.2; padding: 4px; }
+.formbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 4px; }
+.formbar .sp { flex: 1; }
+
+.foot { border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.foot .sp { flex: 1; }
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 3000; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; box-shadow: var(--shadow); max-width: calc(100% - 32px); }
+
+@media (max-width: 860px) {
+  .mapview { grid-template-columns: minmax(0, 1fr); }
+  .mapbox { height: 60vh; min-height: 360px; }
+  .side { max-height: none; }
+  .tools { width: 100%; }
+  .search { flex-basis: 100%; order: 5; }
+}
+@media (max-width: 520px) {
+  .two { grid-template-columns: minmax(0, 1fr); }
+  .tools .btn.primary { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Diario dei ristoranti</h1>
+      <p class="stats" id="stats">Carico il diario…</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Vista">
+        <button type="button" id="tab-lista" aria-pressed="true">Lista</button>
+        <button type="button" id="tab-mappa" aria-pressed="false">Mappa</button>
+      </div>
+      <div class="search">
+        <label class="sr" for="q">Cerca</label>
+        <input class="field-in" id="q" type="search" placeholder="Cerca per nome, città o cucina" autocomplete="off">
+      </div>
+      <label class="sr" for="sort">Ordina per</label>
+      <select class="field-in" id="sort">
+        <option value="recenti">Più recenti</option>
+        <option value="voto">Voto più alto</option>
+        <option value="nome">Nome A–Z</option>
+      </select>
+      <button type="button" class="btn primary" id="add">+ Aggiungi</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <main id="main">
+    <section id="view-lista" aria-label="Elenco dei ristoranti"><div class="grid" id="grid"></div></section>
+    <section id="view-mappa" aria-label="Mappa dei ristoranti" hidden>
+      <div class="mapview">
+        <div class="mapbox" id="mapbox">
+          <div id="map" aria-label="Mappa con i ristoranti segnati"></div>
+          <div class="mapctl"><button type="button" class="btn small" id="zall">Vedi tutti</button></div>
+          <div class="selcard" id="selcard" hidden></div>
+        </div>
+        <aside class="side" id="side" aria-label="Ristoranti sulla mappa"></aside>
+      </div>
+    </section>
+    <div class="empty" id="empty" hidden>
+      <h2>Il diario è vuoto.</h2>
+      <p>Dopo la prossima cena che ti colpisce, scrivila qui: un voto, due righe su cosa ricordi e qualche foto. Con la posizione, il posto compare anche sulla mappa.</p>
+      <button type="button" class="btn primary" id="add-first">Aggiungi il primo ristorante</button>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>I dati sono salvati su questo dispositivo.</span>
+    <span class="sp"></span>
+    <button type="button" class="btn small" id="export">Esporta copia di sicurezza</button>
+    <button type="button" class="btn small" id="import">Importa</button>
+    <input type="file" id="import-file" accept="application/json,.json" class="sr" tabindex="-1">
+  </footer>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Scheda ristorante"></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function h(tag, props) {
+    var el = document.createElement(tag);
+    if (props) {
+      for (var k in props) {
+        var v = props[k];
+        if (v == null || v === false) continue;
+        if (k === 'class') el.className = v;
+        else if (k === 'text') el.textContent = v;
+        else if (k === 'value' || k === 'checked' || k === 'disabled') el[k] = v;
+        else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), v);
+        else el.setAttribute(k, v === true ? '' : v);
+      }
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var kids = [].concat(arguments[i]);
+      for (var j = 0; j < kids.length; j++) {
+        var kid = kids[j];
+        if (kid == null || kid === false) continue;
+        el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+      }
+    }
+    return el;
+  }
+  function fmtVote(v) {
+    if (v == null || v === '' || isNaN(Number(v))) return '–';
+    var n = Number(v);
+    return n.toLocaleString('it-IT', { minimumFractionDigits: n % 1 ? 1 : 0, maximumFractionDigits: 1 });
+  }
+  function fmtDate(s) {
+    if (!s) return '';
+    var d = new Date(s + 'T12:00:00');
+    return isNaN(d) ? '' : d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function hasPos(it) { return Number.isFinite(it.lat) && Number.isFinite(it.lng); }
+  function mapsUrl(it) {
+    if (hasPos(it)) return 'https://www.google.com/maps/search/?api=1&query=' + it.lat + ',' + it.lng;
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent([it.nome, it.indirizzo, it.citta].filter(Boolean).join(' '));
+  }
+  function dirUrl(it) { return 'https://www.google.com/maps/dir/?api=1&destination=' + it.lat + ',' + it.lng; }
+  function parseCoords(str) {
+    if (!str) return null;
+    str = String(str).trim();
+    var m = str.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/) ||
+            str.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/) ||
+            str.match(/(-?\d{1,3}\.\d+)\s*[,;]?\s*(-?\d{1,3}\.\d+)/);
+    if (!m) return null;
+    var lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+    if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return null;
+    return { lat: lat, lng: lng };
+  }
+  function newId() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ---------- archivio sul dispositivo (IndexedDB) ---------- */
+  var S = { items: [], ready: false, view: 'lista', q: '', sort: 'recenti', selected: null };
+  var idb = null;
+  var memOnly = false;
+  function openDB() {
+    return new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('noidb')); return; }
+      var r = indexedDB.open('diario-ristoranti', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('r', { keyPath: 'id' }); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+      r.onblocked = function () { rej(new Error('blocked')); };
+    });
+  }
+  function dbRun(mode, fn) {
+    return new Promise(function (res, rej) {
+      var t = idb.transaction('r', mode), out = fn(t.objectStore('r'));
+      t.oncomplete = function () { res(out && 'result' in out ? out.result : undefined); };
+      t.onerror = function () { rej(t.error); };
+      t.onabort = function () { rej(t.error || new Error('abort')); };
+    });
+  }
+  var Store = {
+    all: function () { return idb ? dbRun('readonly', function (s) { return s.getAll(); }) : Promise.resolve(S.items); },
+    put: function (d) {
+      if (idb) return dbRun('readwrite', function (s) { return s.put(d); });
+      S.items = S.items.filter(function (x) { return x.id !== d.id; }).concat([d]); return Promise.resolve();
+    },
+    del: function (id) {
+      if (idb) return dbRun('readwrite', function (s) { return s.delete(id); });
+      S.items = S.items.filter(function (x) { return x.id !== id; }); return Promise.resolve();
+    }
+  };
+  function reload() { return Store.all().then(function (list) { S.items = list; S.ready = true; renderAll(); }); }
+  function saveItem(d) { return Store.put(d).then(reload); }
+  function removeItem(id) { return Store.del(id).then(reload); }
+
+  function filtered() {
+    var q = S.q.trim().toLowerCase();
+    var list = S.items.filter(function (it) {
+      if (!q) return true;
+      return [it.nome, it.citta, it.cucina, it.indirizzo, it.descrizione].join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+    list.sort(function (a, b) {
+      if (S.sort === 'voto') return (Number(b.voto) || 0) - (Number(a.voto) || 0) || String(a.nome).localeCompare(String(b.nome), 'it');
+      if (S.sort === 'nome') return String(a.nome).localeCompare(String(b.nome), 'it');
+      var da = (a.dataVisita || '') + '|' + (a.creato || ''), db_ = (b.dataVisita || '') + '|' + (b.creato || '');
+      return db_ < da ? -1 : db_ > da ? 1 : 0;
+    });
+    return list;
+  }
+  function byId(id) { return S.items.filter(function (x) { return x.id === id; })[0] || null; }
+
+  /* ---------- elementi comuni ---------- */
+  function placeholder(it, mini) {
+    return h('div', { class: 'ph' + (mini ? ' mini' : '') }, h('span', { text: (String(it.nome || '?').trim()[0] || '?').toUpperCase() }));
+  }
+  function mediaFor(it, mini) {
+    var cover = it.foto && it.foto[0];
+    if (!cover) return placeholder(it, mini);
+    var img = h('img', { src: cover, alt: mini ? '' : 'Foto di ' + it.nome, loading: 'lazy' });
+    img.addEventListener('error', function () { img.replaceWith(placeholder(it, mini)); });
+    return img;
+  }
+  function metaLine(it) {
+    return h('div', { class: 'meta' },
+      it.citta ? h('span', { text: it.citta }) : null,
+      it.cucina ? h('span', { text: it.cucina }) : null,
+      it.dataVisita ? h('span', { text: fmtDate(it.dataVisita) }) : null);
+  }
+  function activate(fn) {
+    return function (e) { if (e.type === 'click' || e.key === 'Enter' || e.key === ' ') { if (e.type !== 'click') e.preventDefault(); fn(e); } };
+  }
+
+  function renderGrid() {
+    var grid = $('#grid');
+    grid.replaceChildren();
+    if (!S.ready) { grid.append(h('p', { class: 'nores', text: 'Carico il diario…' })); return; }
+    var list = filtered();
+    if (!list.length) { grid.append(h('p', { class: 'nores', text: 'Nessun risultato per “' + S.q + '”.' })); return; }
+    list.forEach(function (it) {
+      var open = activate(function () { openDetail(it.id); });
+      grid.append(h('div', { class: 'card', role: 'button', tabindex: '0', 'aria-label': it.nome + ', voto ' + fmtVote(it.voto), onclick: open, onkeydown: open },
+        h('div', { class: 'media' }, mediaFor(it), h('span', { class: 'vote', text: fmtVote(it.voto) })),
+        h('div', { class: 'body' }, h('h3', { text: it.nome }), metaLine(it), it.descrizione ? h('p', { text: it.descrizione }) : null)));
+    });
+  }
+  function renderSide() {
+    var side = $('#side');
+    side.replaceChildren();
+    var list = filtered();
+    if (!list.length) { side.append(h('p', { class: 'nores', text: S.ready ? 'Nessun risultato.' : 'Carico il diario…' })); return; }
+    list.forEach(function (it) {
+      var pick = activate(function () { select(it.id, true); });
+      side.append(h('div', { class: 'row', role: 'button', tabindex: '0', 'aria-current': S.selected === it.id ? 'true' : 'false', onclick: pick, onkeydown: pick },
+        h('div', { class: 'thumb' }, mediaFor(it, true)),
+        h('div', { style: 'min-width:0' },
+          h('div', { class: 'nm', text: it.nome }),
+          h('div', { class: 'meta' }, h('span', { text: it.citta || it.cucina || '' }), hasPos(it) ? null : h('span', { class: 'tag', text: 'Senza posizione' }))),
+        h('span', { class: 'vote sm', text: fmtVote(it.voto) })));
+    });
+  }
+  function renderSelected() {
+    var box = $('#selcard');
+    var it = S.selected && byId(S.selected);
+    if (!it) { box.hidden = true; box.replaceChildren(); return; }
+    box.hidden = false;
+    box.replaceChildren(
+      h('div', { class: 'thumb' }, mediaFor(it, true)),
+      h('div', { style: 'min-width:0' }, h('h3', { text: it.nome }), metaLine(it)),
+      h('span', { class: 'vote', text: fmtVote(it.voto) }),
+      h('div', { class: 'acts' },
+        h('button', { type: 'button', class: 'btn small primary', onclick: function () { openDetail(it.id); }, text: 'Apri scheda' }),
+        hasPos(it) ? h('a', { class: 'btn small', href: dirUrl(it), target: '_blank', rel: 'noopener', text: 'Indicazioni ↗' }) : null),
+      h('button', { type: 'button', class: 'x', 'aria-label': 'Chiudi', onclick: function () { S.selected = null; renderSelected(); renderSide(); drawPins(); }, text: '×' }));
+  }
+  function select(id, fly) {
+    S.selected = id;
+    renderSelected(); renderSide(); drawPins();
+    var it = byId(id);
+    if (fly && it && hasPos(it) && M.map) {
+      var z = Math.max(M.map.getZoom(), 15);
+      if (reduceMotion) M.map.setView([it.lat, it.lng], z); else M.map.flyTo([it.lat, it.lng], z, { duration: 0.8 });
+    }
+  }
+
+  function renderAll() {
+    var n = S.items.length;
+    var votes = S.items.map(function (x) { return Number(x.voto); }).filter(function (v) { return !isNaN(v); });
+    var avg = votes.length ? votes.reduce(function (a, b) { return a + b; }, 0) / votes.length : null;
+    $('#stats').textContent = !S.ready ? 'Carico il diario…' : n ? (n + (n === 1 ? ' posto' : ' posti') + ' · media ' + fmtVote(Math.round(avg * 10) / 10)) : 'Ancora nessun posto';
+    var empty = S.ready && n === 0;
+    $('#empty').hidden = !empty;
+    $('#view-lista').hidden = empty || S.view !== 'lista';
+    $('#view-mappa').hidden = empty || S.view !== 'mappa';
+    if (S.selected && !byId(S.selected)) S.selected = null;
+    renderGrid(); renderSide(); renderSelected();
+    if (S.view === 'mappa' && !empty) {
+      ensureMap();
+      if (M.map) { M.map.invalidateSize(); drawPins(); if (!M.fitted && S.ready) fitAll(false); }
+    }
+  }
+  function setView(v) {
+    S.view = v;
+    $('#tab-lista').setAttribute('aria-pressed', v === 'lista');
+    $('#tab-mappa').setAttribute('aria-pressed', v === 'mappa');
+    renderAll();
+  }
+
+  /* ---------- mappa (OpenStreetMap con Leaflet) ---------- */
+  var M = { map: null, layer: null, fitted: false };
+  var TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  var ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  function ensureMap() {
+    if (M.map) return;
+    if (!window.L) { $('#map').replaceChildren(h('p', { class: 'nores', style: 'padding:16px', text: 'La mappa non si carica. Controlla la connessione.' })); return; }
+    M.map = L.map('map', { zoomControl: true, worldCopyJump: true });
+    L.tileLayer(TILES, { maxZoom: 19, attribution: ATTR }).addTo(M.map);
+    L.control.scale({ imperial: false }).addTo(M.map);
+    M.layer = L.layerGroup().addTo(M.map);
+    M.map.setView([42.5, 12.5], 5);
+  }
+  function pinIcon(it, sel) {
+    return L.divIcon({ className: '', html: '<div class="pin' + (sel ? ' sel' : '') + '">' + fmtVote(it.voto) + '</div>', iconSize: [34, 34], iconAnchor: [17, 17] });
+  }
+  function drawPins() {
+    if (!M.map) return;
+    M.layer.clearLayers();
+    filtered().filter(hasPos).forEach(function (it) {
+      var sel = it.id === S.selected;
+      var mk = L.marker([it.lat, it.lng], { icon: pinIcon(it, sel), title: it.nome, zIndexOffset: sel ? 1000 : 0, keyboard: true });
+      mk.on('click', function () { select(it.id, false); });
+      mk.addTo(M.layer);
+    });
+  }
+  function fitAll(animate) {
+    if (!M.map) return;
+    var pts = filtered().filter(hasPos).map(function (it) { return [it.lat, it.lng]; });
+    if (!pts.length) { M.map.setView([42.5, 12.5], 5); M.fitted = true; return; }
+    M.map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], maxZoom: 16, animate: !!animate && !reduceMotion });
+    M.fitted = true;
+  }
+
+  /* ---------- fogli ---------- */
+  var sheetState = { last: null, cleanup: null };
+  function openSheet(node, cleanup) {
+    sheetState.cleanup = cleanup || null;
+    sheetState.last = document.activeElement;
+    $('#sheet').replaceChildren(node);
+    $('#overlay').hidden = false;
+    document.body.style.overflow = 'hidden';
+    $('#overlay').scrollTop = 0;
+  }
+  function closeSheet() {
+    if ($('#overlay').hidden) return;
+    var cl = sheetState.cleanup; sheetState.cleanup = null;
+    if (cl) { try { cl(); } catch (e) {} }
+    $('#overlay').hidden = true;
+    $('#sheet').replaceChildren();
+    document.body.style.overflow = '';
+    if (sheetState.last && sheetState.last.focus) { try { sheetState.last.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  function xButton() { return h('button', { type: 'button', class: 'xbtn', 'aria-label': 'Chiudi', onclick: closeSheet, text: '×' }); }
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 3200);
+  }
+
+  function openDetail(id) {
+    var it = byId(id); if (!it) return;
+    var fotos = it.foto || [];
+    var gal;
+    if (fotos.length) {
+      var main = h('div', { class: 'main' }), thumbs = h('div', { class: 'thumbs' });
+      var show = function (i) {
+        main.replaceChildren(h('img', { src: fotos[i], alt: 'Foto ' + (i + 1) + ' di ' + it.nome }));
+        [].forEach.call(thumbs.children, function (b, j) { b.setAttribute('aria-current', j === i ? 'true' : 'false'); });
+      };
+      fotos.forEach(function (f, i) { thumbs.append(h('button', { type: 'button', 'aria-label': 'Mostra foto ' + (i + 1), onclick: function () { show(i); } }, h('img', { src: f, alt: '' }))); });
+      gal = h('div', { class: 'gal' }, main, fotos.length > 1 ? thumbs : null);
+      show(0);
+    } else gal = h('div', { class: 'gal' }, h('div', { class: 'main' }, placeholder(it)));
+    var addrParts = [it.indirizzo, it.citta].filter(Boolean).join(', ');
+    openSheet(h('div', null, xButton(), gal,
+      h('div', { class: 'inner' },
+        h('div', { class: 'headrow' },
+          h('div', { style: 'min-width:0;display:flex;flex-direction:column;gap:8px' }, h('h2', { text: it.nome }), metaLine(it)),
+          h('span', { class: 'vote lg', 'aria-label': 'Voto ' + fmtVote(it.voto), text: fmtVote(it.voto) })),
+        h('div', { class: 'addr' },
+          h('span', { text: addrParts || 'Indirizzo non inserito' }),
+          h('a', { href: mapsUrl(it), target: '_blank', rel: 'noopener', text: 'Apri in Google Maps ↗' }),
+          hasPos(it) ? h('a', { href: dirUrl(it), target: '_blank', rel: 'noopener', text: 'Indicazioni ↗' }) : null),
+        it.descrizione ? h('p', { class: 'desc', text: it.descrizione }) : h('p', { class: 'desc', style: 'color:var(--muted)', text: 'Nessuna descrizione.' }),
+        h('div', { class: 'actions' },
+          hasPos(it) ? h('button', { type: 'button', class: 'btn', onclick: function () { closeSheet(); setView('mappa'); setTimeout(function () { select(it.id, true); }, 80); }, text: 'Mostra sulla mappa' }) : null,
+          h('button', { type: 'button', class: 'btn primary', onclick: function () { closeSheet(); openEdit(it.id); }, text: 'Modifica' })))));
+  }
+
+  /* foto: ridimensiona e converte in JPEG */
+  function resizeToDataUrl(file, maxSide) {
+    function fromBitmap(bmp) {
+      var w = bmp.width, h2 = bmp.height, sc = Math.min(1, maxSide / Math.max(w, h2));
+      var cv = document.createElement('canvas'); cv.width = Math.round(w * sc); cv.height = Math.round(h2 * sc);
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+      return cv.toDataURL('image/jpeg', 0.82);
+    }
+    function viaImg() {
+      return new Promise(function (res, rej) {
+        var url = URL.createObjectURL(file), img = new Image();
+        img.onload = function () { try { res(fromBitmap(img)); } catch (e) { rej(e); } URL.revokeObjectURL(url); };
+        img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('decode')); };
+        img.src = url;
+      });
+    }
+    if (window.createImageBitmap) {
+      return createImageBitmap(file, { imageOrientation: 'from-image' }).then(fromBitmap).catch(viaImg);
+    }
+    return viaImg();
+  }
+
+  /* ricerca indirizzi (Nominatim / OpenStreetMap) */
+  function nominatim(q, signal) {
+    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=it&q=' + encodeURIComponent(q);
+    return fetch(url, { signal: signal, headers: { 'Accept': 'application/json' } }).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.json();
+    });
+  }
+  function shortName(r) {
+    var parts = String(r.display_name || '').split(',').map(function (x) { return x.trim(); });
+    return parts.slice(0, 4).join(', ');
+  }
+
+  function openEdit(id) {
+    var it = id ? byId(id) : null;
+    var d = it ? JSON.parse(JSON.stringify(it)) : { nome: '', cucina: '', citta: '', indirizzo: '', voto: 8, descrizione: '', foto: [], dataVisita: todayStr() };
+    var foto = (d.foto || []).slice();
+    var pos = hasPos(d) ? { lat: d.lat, lng: d.lng } : null;
+    var pickMap = null, pickMarker = null, ctl = null;
+
+    var nome = h('input', { class: 'field-in', id: 'f-nome', type: 'text', value: d.nome || '', maxlength: '120', autocomplete: 'off' });
+    var cucina = h('input', { class: 'field-in', id: 'f-cucina', type: 'text', value: d.cucina || '', maxlength: '60', list: 'dl-cucina', placeholder: 'Trattoria, sushi, pizzeria…' });
+    var dl = h('datalist', { id: 'dl-cucina' }, ['Trattoria', 'Osteria', 'Pizzeria', 'Pesce', 'Sushi', 'Cucina regionale', 'Vegetariano', 'Fine dining', 'Street food', 'Bistrot', 'Cocktail bar', 'Caffè e pasticceria', 'Etnico'].map(function (x) { return h('option', { value: x }); }));
+    var citta = h('input', { class: 'field-in', id: 'f-citta', type: 'text', value: d.citta || '', maxlength: '80', placeholder: 'Milano', autocomplete: 'off' });
+    var ind = h('input', { class: 'field-in', id: 'f-indirizzo', type: 'text', value: d.indirizzo || '', maxlength: '160', placeholder: 'Via, numero civico', autocomplete: 'off' });
+    var coord = h('input', { class: 'field-in coord', id: 'f-coord', type: 'text', value: pos ? pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) : '', placeholder: '45.46420, 9.19000', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Coordinate' });
+    var status = h('div', { class: 'status', role: 'status' });
+    var results = h('div', { class: 'results' });
+    var voteOut = h('span', { class: 'vote', text: fmtVote(d.voto) });
+    var vote = h('input', { id: 'f-voto', type: 'range', min: '1', max: '10', step: '0.5', value: String(d.voto != null ? d.voto : 8), 'aria-label': 'Voto da 1 a 10' });
+    vote.addEventListener('input', function () { voteOut.textContent = fmtVote(vote.value); });
+    var data = h('input', { class: 'field-in', id: 'f-data', type: 'date', value: d.dataVisita || todayStr() });
+    var desc = h('textarea', { class: 'field-in', id: 'f-desc', maxlength: '3000', placeholder: 'Cosa ti è rimasto: un piatto, il servizio, l’atmosfera, con chi eri.' });
+    desc.value = d.descrizione || '';
+    var err = h('div', { class: 'status err', role: 'alert' });
+
+    function say(msg, bad) { status.className = 'status' + (bad ? ' err' : ''); status.textContent = msg; }
+    function setPos(lat, lng, opts) {
+      opts = opts || {};
+      pos = { lat: lat, lng: lng };
+      if (!opts.keepField) coord.value = lat.toFixed(5) + ', ' + lng.toFixed(5);
+      if (pickMap) {
+        if (!pickMarker) {
+          pickMarker = L.marker([lat, lng], { draggable: true, icon: L.divIcon({ className: '', html: '<div class="pin here">●</div>', iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(pickMap);
+          pickMarker.on('dragend', function () { var p = pickMarker.getLatLng(); setPos(p.lat, p.lng, { fromMap: true }); say('Punto spostato. Puoi ancora trascinarlo o toccare un altro punto.'); });
+        } else pickMarker.setLatLng([lat, lng]);
+        if (!opts.fromMap) pickMap.setView([lat, lng], opts.zoom || Math.max(pickMap.getZoom(), 17));
+      }
+    }
+    coord.addEventListener('input', function () {
+      var c = parseCoords(coord.value);
+      if (!coord.value.trim()) { pos = null; if (pickMarker) { pickMap.removeLayer(pickMarker); pickMarker = null; } say('Nessuna posizione: il ristorante non comparirà sulla mappa.'); return; }
+      if (!c) { say('Non riesco a leggere le coordinate. Esempio: 45.4642, 9.1900.', true); return; }
+      setPos(c.lat, c.lng, { keepField: true }); say('Posizione letta dalle coordinate.');
+    });
+
+    function search() {
+      var name = nome.value.trim(), city = citta.value.trim(), addr = ind.value.trim();
+      if (!addr && !city && !name) { say('Scrivi almeno la via e la città, oppure il nome.', true); return; }
+      if (ctl) ctl.abort();
+      ctl = new AbortController();
+      var my = ctl;
+      results.replaceChildren();
+      say('Cerco…');
+      var attempts = [];
+      if (addr && city) attempts.push(addr + ', ' + city);
+      if (name && city) attempts.push(name + ', ' + city);
+      if (name && addr && city) attempts.unshift(name + ', ' + addr + ', ' + city);
+      if (!attempts.length) attempts.push([name, addr, city].filter(Boolean).join(', '));
+      var found = null;
+      attempts.reduce(function (p, q, i) {
+        return p.then(function () {
+          if (found || my.signal.aborted) return;
+          return (i ? sleep(1100) : Promise.resolve()).then(function () { return nominatim(q, my.signal); }).then(function (r) { if (r && r.length) found = r; });
+        });
+      }, Promise.resolve()).then(function () {
+        if (my.signal.aborted) return;
+        if (!found) { say('Non ho trovato questo indirizzo. Prova senza il civico, oppure tocca la mappa per segnare il punto.', true); return; }
+        var cur = 0;
+        var paint = function () {
+          results.replaceChildren();
+          found.forEach(function (r, i) {
+            results.append(h('button', { type: 'button', 'aria-current': i === cur ? 'true' : 'false', onclick: function () { cur = i; setPos(parseFloat(r.lat), parseFloat(r.lon)); paint(); say('Posizione impostata. Se non è esatta, tocca la mappa o trascina il punto.'); }, text: shortName(r) }));
+          });
+        };
+        setPos(parseFloat(found[0].lat), parseFloat(found[0].lon));
+        paint();
+        say('Posizione impostata. Se non è esatta, scegli un altro risultato, tocca la mappa o trascina il punto.');
+      }).catch(function (e) {
+        if (my.signal.aborted) return;
+        say('La ricerca non è riuscita. Controlla la connessione, oppure tocca la mappa per segnare il punto.', true);
+      });
+    }
+    function locate() {
+      if (!navigator.geolocation) { say('Il dispositivo non permette di leggere la posizione.', true); return; }
+      say('Leggo la tua posizione…');
+      navigator.geolocation.getCurrentPosition(function (p) {
+        setPos(p.coords.latitude, p.coords.longitude, { zoom: 18 });
+        say('Posizione impostata dove ti trovi ora. Se serve, trascina il punto.');
+      }, function () { say('Non ho il permesso di leggere la posizione. Cerca l’indirizzo o tocca la mappa.', true); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    }
+    var searchBtn = h('button', { type: 'button', class: 'btn', text: 'Cerca via e città', onclick: search });
+    var hereBtn = h('button', { type: 'button', class: 'btn', text: 'Sono qui', onclick: locate });
+    var pickBox = h('div', { class: 'pickmap', id: 'pickmap' });
+    say(pos ? 'Posizione già impostata. Puoi spostarla toccando la mappa.' : 'Cerca l’indirizzo, usa «Sono qui» oppure tocca la mappa.');
+
+    /* foto */
+    var photosBox = h('div', { class: 'photos' });
+    var fileIn = h('input', { type: 'file', id: 'f-foto', accept: 'image/*', multiple: true, class: 'sr', tabindex: '-1' });
+    function paintPhotos() {
+      photosBox.replaceChildren();
+      foto.forEach(function (src, i) {
+        var kids = [h('img', { src: src, alt: 'Foto ' + (i + 1) }),
+          h('button', { type: 'button', class: 'rm', 'aria-label': 'Rimuovi foto ' + (i + 1), onclick: function () { foto.splice(i, 1); paintPhotos(); }, text: '×' })];
+        if (i === 0) kids.push(h('span', { class: 'cov', text: 'Copertina' }));
+        else kids.push(h('button', { type: 'button', class: 'cov', onclick: function () { var s = foto.splice(i, 1)[0]; foto.unshift(s); paintPhotos(); }, text: 'Copertina' }));
+        photosBox.append(h('div', { class: 'photo' }, kids));
+      });
+      photosBox.append(h('button', { type: 'button', class: 'addphoto', onclick: function () { fileIn.click(); }, text: '+ Foto' }));
+    }
+    fileIn.addEventListener('change', function () {
+      var files = [].slice.call(fileIn.files || []); fileIn.value = '';
+      files.reduce(function (p, f) {
+        return p.then(function () {
+          var busy = h('div', { class: 'photo busy', text: 'Carico…' });
+          photosBox.insertBefore(busy, photosBox.lastChild);
+          return resizeToDataUrl(f, 1400).then(function (url) { foto.push(url); })
+            .catch(function () { err.textContent = 'Non riesco a leggere questa foto.'; })
+            .then(function () { busy.remove(); paintPhotos(); });
+        });
+      }, Promise.resolve());
+    });
+    paintPhotos();
+
+    var saveBtn = h('button', { type: 'submit', class: 'btn primary', text: 'Salva' });
+    var delBtn = null;
+    if (it) {
+      delBtn = h('button', { type: 'button', class: 'btn danger', text: 'Elimina' });
+      var armed = false;
+      delBtn.addEventListener('click', function () {
+        if (!armed) { armed = true; delBtn.textContent = 'Conferma: elimina per sempre'; setTimeout(function () { armed = false; delBtn.textContent = 'Elimina'; }, 4000); return; }
+        delBtn.disabled = true;
+        removeItem(it.id).then(function () { closeSheet(); toast('Ristorante eliminato'); })
+          .catch(function () { delBtn.disabled = false; err.textContent = 'Non sono riuscito a eliminarlo. Riprova.'; });
+      });
+    }
+    var form = h('form', { class: 'edit', novalidate: true },
+      h('div', { class: 'fg' }, h('label', { for: 'f-nome', text: 'Nome del ristorante' }), nome),
+      h('div', { class: 'two' },
+        h('div', { class: 'fg' }, h('label', { for: 'f-cucina', text: 'Tipo di cucina' }), cucina, dl),
+        h('div', { class: 'fg' }, h('label', { for: 'f-data', text: 'Data della visita' }), data)),
+      h('div', { class: 'two' },
+        h('div', { class: 'fg' }, h('label', { for: 'f-citta', text: 'Città' }), citta),
+        h('div', { class: 'fg' }, h('label', { for: 'f-indirizzo', text: 'Via e numero' }), ind)),
+      h('div', { class: 'fg' }, h('span', { class: 'lbl', text: 'Posizione sulla mappa' }),
+        h('div', { class: 'btnrow' }, searchBtn, hereBtn), status, results,
+        h('div', { class: 'pickwrap' }, pickBox),
+        h('label', { class: 'hint', for: 'f-coord', text: 'Coordinate (si compilano da sole, puoi anche incollarle da Google Maps)' }), coord),
+      h('div', { class: 'fg' }, h('span', { class: 'lbl', text: 'Voto' }), h('div', { class: 'voterow' }, vote, voteOut)),
+      h('div', { class: 'fg' }, h('label', { for: 'f-desc', text: 'Descrizione' }), desc),
+      h('div', { class: 'fg' }, h('span', { class: 'lbl', text: 'Foto' }), photosBox, fileIn),
+      err,
+      h('div', { class: 'formbar' }, saveBtn, h('button', { type: 'button', class: 'btn', onclick: closeSheet, text: 'Annulla' }), h('span', { class: 'sp' }), delBtn));
+    form.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.target === ind || e.target === citta)) { e.preventDefault(); search(); } });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      err.textContent = '';
+      var name = nome.value.trim();
+      if (!name) { err.textContent = 'Scrivi il nome del ristorante.'; nome.focus(); return; }
+      var raw = coord.value.trim(), c = null;
+      if (raw) { c = parseCoords(raw); if (!c) { err.textContent = 'Le coordinate non sono valide. Correggile o svuota il campo.'; coord.focus(); return; } }
+      var out = {
+        id: it ? it.id : newId(), nome: name, cucina: cucina.value.trim(), citta: citta.value.trim(), indirizzo: ind.value.trim(),
+        lat: c ? c.lat : null, lng: c ? c.lng : null, voto: Number(vote.value), descrizione: desc.value.trim(),
+        foto: foto.slice(), dataVisita: data.value || '', creato: (it && it.creato) || new Date().toISOString()
+      };
+      saveBtn.disabled = true; saveBtn.textContent = 'Salvo…';
+      saveItem(out).then(function () { closeSheet(); toast(it ? 'Modifiche salvate' : 'Ristorante aggiunto'); })
+        .catch(function () { saveBtn.disabled = false; saveBtn.textContent = 'Salva'; err.textContent = 'Non sono riuscito a salvare. Lo spazio del dispositivo potrebbe essere pieno.'; });
+    });
+
+    openSheet(h('div', null, xButton(), h('div', { class: 'inner' }, h('h2', { text: it ? 'Modifica ristorante' : 'Nuovo ristorante' }), form)), function () {
+      if (ctl) ctl.abort();
+      if (pickMap) { pickMap.remove(); pickMap = null; pickMarker = null; }
+    });
+    // mappa per scegliere il punto
+    if (window.L) {
+      pickMap = L.map(pickBox, { zoomControl: true, attributionControl: true });
+      L.tileLayer(TILES, { maxZoom: 19, attribution: ATTR }).addTo(pickMap);
+      if (pos) { pickMap.setView([pos.lat, pos.lng], 17); setPos(pos.lat, pos.lng, { keepField: true, zoom: 17 }); }
+      else if (M.map && M.map.getZoom() > 5) pickMap.setView(M.map.getCenter(), M.map.getZoom());
+      else pickMap.setView([42.5, 12.5], 5);
+      pickMap.on('click', function (e) { setPos(e.latlng.lat, e.latlng.lng, { fromMap: true }); say('Punto segnato. Puoi trascinarlo per sistemarlo.'); });
+      setTimeout(function () { if (pickMap) pickMap.invalidateSize(); }, 60);
+    } else say('La mappa non si carica. Puoi comunque incollare le coordinate.', true);
+    setTimeout(function () { try { nome.focus({ preventScroll: true }); } catch (e) {} }, 30);
+  }
+
+  /* ---------- copia di sicurezza ---------- */
+  function exportAll() {
+    var blob = new Blob([JSON.stringify({ app: 'diario-ristoranti', versione: 1, esportato: new Date().toISOString(), ristoranti: S.items }, null, 1)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = h('a', { href: url, download: 'diario-ristoranti-' + todayStr() + '.json' });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast('Copia di sicurezza creata');
+  }
+  function importFile(file) {
+    var fr = new FileReader();
+    fr.onload = function () {
+      try {
+        var j = JSON.parse(fr.result), arr = Array.isArray(j) ? j : j.ristoranti;
+        if (!Array.isArray(arr)) throw new Error('formato');
+        var ok = arr.filter(function (x) { return x && typeof x.nome === 'string'; }).map(function (x) { if (!x.id) x.id = newId(); return x; });
+        ok.reduce(function (p, x) { return p.then(function () { return Store.put(x); }); }, Promise.resolve()).then(reload).then(function () { toast('Importati ' + ok.length + ' ristoranti'); });
+      } catch (e) { toast('Il file non è una copia di sicurezza valida'); }
+    };
+    fr.readAsText(file);
+  }
+
+  /* ---------- eventi ---------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('#overlay').hidden) { closeSheet(); return; }
+    if (e.key === 'Tab' && !$('#overlay').hidden) {
+      var f = [].slice.call($('#sheet').querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not(.sr), textarea, select')).filter(function (x) { return !x.hidden && x.offsetParent !== null; });
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+  $('#overlay').addEventListener('mousedown', function (e) { if (e.target === $('#overlay')) closeSheet(); });
+  $('#tab-lista').addEventListener('click', function () { setView('lista'); });
+  $('#tab-mappa').addEventListener('click', function () { setView('mappa'); });
+  $('#q').addEventListener('input', function (e) { S.q = e.target.value; renderGrid(); renderSide(); drawPins(); });
+  $('#sort').addEventListener('change', function (e) { S.sort = e.target.value; renderGrid(); renderSide(); });
+  $('#add').addEventListener('click', function () { openEdit(null); });
+  $('#add-first').addEventListener('click', function () { openEdit(null); });
+  $('#zall').addEventListener('click', function () { fitAll(true); });
+  $('#export').addEventListener('click', exportAll);
+  $('#import').addEventListener('click', function () { $('#import-file').click(); });
+  $('#import-file').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) importFile(f); });
+
+  /* icona per la schermata Home */
+  try {
+    var cv = document.createElement('canvas'); cv.width = cv.height = 180;
+    var cx = cv.getContext('2d');
+    cx.fillStyle = '#1B4FD6'; cx.fillRect(0, 0, 180, 180);
+    cx.fillStyle = '#fff'; cx.font = '700 104px system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('D', 90, 96);
+    var link = document.createElement('link'); link.rel = 'apple-touch-icon'; link.href = cv.toDataURL('image/png'); document.head.append(link);
+    var fav = document.createElement('link'); fav.rel = 'icon'; fav.href = link.href; document.head.append(fav);
+  } catch (e) {}
+
+  /* ---------- avvio ---------- */
+  renderAll();
+  openDB().then(function (db) {
+    idb = db;
+    if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () {}); }
+    return reload();
+  }).catch(function () {
+    memOnly = true; S.ready = true;
+    var n = $('#notice'); n.hidden = false;
+    n.textContent = 'Questo browser non permette di salvare i dati (forse è in navigazione privata). Quello che aggiungi resta solo finché la pagina è aperta: usa «Esporta copia di sicurezza».';
+    renderAll();
+  });
+})();
+</script>
+</body>
+</html>
